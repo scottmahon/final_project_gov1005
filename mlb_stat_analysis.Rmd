@@ -1,0 +1,563 @@
+---
+title: "final_project.Rmd"
+author: "Scott Mahon"
+date: "4/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(rvest)
+library(xml2)
+library(readxl)
+library(janitor)
+library(ggrepel)
+library(ggimage)
+library(RCurl)
+library(gt)
+library(broom)
+options(scipen=999)
+```
+```{r load in wins}
+
+# As of right now, I'm working on the code that ALyssa gave my to find an easier
+# way to scrape data from websites. For this week, I manually added the runs per
+# team per season as well as strikeouts as a pitching staff to excel files,
+# which wasn't too difficult, but we're looking for an easier way to do
+# attendance because that would be very difficult to do manually. Also, I'm
+# trying to find a way to include team logos instead of dots.
+
+wins1 <- read_excel("raw-data/wins.xlsx") %>%
+  filter(!is.na(ABBR))
+ wins <- wins1 %>%
+  pivot_longer(-ABBR, names_to = "year", values_to = "wins")
+
+```
+```{r load in batting average}
+battingaverage1 <- read_excel("raw-data/MLBbattingaverage.xlsx") 
+ battingaverage <- battingaverage1 %>%
+   select (-Name) %>%
+  pivot_longer(-ABBR, names_to = "year", values_to = "battingaverage") 
+```
+```{r load in errors}
+errors1 <- read_excel("raw-data/MLBerrors.xlsx")
+errors <- errors1 %>%
+   select (-Team) %>%
+  pivot_longer(-ABBR, names_to = "year", values_to = "errors") 
+```
+```{r}
+runs1 <- read_excel("raw-data/MLBRuns.xlsx")
+runs <- runs1 %>%
+   select (-Name) %>%
+  pivot_longer(-ABBR, names_to = "year", values_to = "runs") 
+```
+```{r}
+Strikeouts_hitters <- read_excel("raw-data/strikeouts_hitters.xlsx") %>%
+    select (-Name) %>%
+    pivot_longer(-ABBR, names_to = "year", values_to = "Strikeouts_hitters") 
+```
+
+```{r}
+strikeouts <- read_excel("raw-data/strikeoutsper9.xlsx") %>%
+   select (-Name) %>%
+  pivot_longer(-ABBR, names_to = "year", values_to = "strikeouts") 
+```
+```{r}
+StolenBases <- read_excel("raw-data/StolenBases.xlsx") %>%
+    pivot_longer(-ABBR, names_to = "year", values_to = "StolenBases") 
+```
+```{r}
+Walks <- read_excel("raw-data/Walks.xlsx") %>%
+    pivot_longer(-ABBR, names_to = "year", values_to = "Walks") 
+```
+
+```{r}
+attendance <- read_excel("raw-data/MLBattendance.xlsx") %>%
+  select(-Name) %>%
+  select(-max) %>%
+  pivot_longer(-ABBR, names_to = "year", values_to = "attendance") 
+```
+```{r}
+mlblogos <- read_excel("raw-data/mlblogosfinal.xlsx")
+```
+```{r}
+AllStars <- read_excel("raw-data/allstars.xlsx") %>%
+    pivot_longer(-ABBR, names_to = "year", values_to = "AllStars") 
+```
+
+```{r join tables}
+joined <- wins %>%
+  full_join (battingaverage, by = c("ABBR" = "ABBR", "year" = "year")) %>%
+  full_join(errors, by = c("ABBR" = "ABBR", "year" = "year")) %>%
+  full_join(runs, by = c("ABBR" = "ABBR", "year" = "year")) %>%
+  full_join(strikeouts, by = c("ABBR" = "ABBR", "year" = "year")) %>%
+  full_join(attendance, by = c("ABBR" = "ABBR", "year" = "year")) %>%
+  full_join(Strikeouts_hitters, by = c("ABBR" = "ABBR", "year" = "year")) %>%
+  full_join(Walks, by = c("ABBR" = "ABBR", "year" = "year")) %>%
+  full_join(StolenBases, by = c("ABBR" = "ABBR", "year" = "year")) %>%
+  full_join(AllStars, by = c("ABBR" = "ABBR", "year" = "year")) %>%
+  full_join(mlblogos, by = c("ABBR" = "ABBR"))
+```
+
+```{r}
+joined %>%
+  filter (year == "2019") %>%
+  ggplot(aes(x = attendance, y = wins)) +
+  geom_image(aes(image = URL), size = 0.05)
+```
+```{r}
+joined %>%
+        lm(scale(wins) ~ scale(battingaverage) + scale(errors) + scale(attendance) + scale(runs) + scale(Strikeouts_hitters) + scale(strikeouts),
+           data = .) %>%
+        tidy(conf.int = TRUE) %>%
+        select(term, estimate, conf.low, conf.high) %>%
+        rename(
+            "Variable" = term,
+            "Estimate" = estimate,
+            "Lower Bound" = conf.low,
+            "Upper Bound" = conf.high) %>%
+            mutate_if(is.numeric, round, 4) %>%
+        gt()
+```
+```{r}
+joined %>%
+        lm(scale(wins) ~ scale(AllStars),
+           data = .) %>%
+        tidy(conf.int = TRUE) %>%
+        select(term, estimate, conf.low, conf.high) %>%
+        rename(
+            "Variable" = term,
+            "Estimate" = estimate,
+            "Lower Bound" = conf.low,
+            "Upper Bound" = conf.high) %>%
+            mutate_if(is.numeric, round, 4) %>%
+        gt()
+```
+```{r}
+joined %>%
+            lm(scale(wins) ~ scale(battingaverage)*scale(runs), 
+               data = .) %>%
+            tidy(conf.int = TRUE) %>%
+            select(term, estimate, conf.low, conf.high) %>%
+            rename(
+                "Variable" = term,
+                "Estimate" = estimate,
+                "Lower Bound" = conf.low,
+                "Upper Bound" = conf.high) %>%
+            mutate_if(is.numeric, round, 4) %>%
+            gt()
+```
+
+
+```{r}
+# joined1 <- joined %>%
+# filter(year == 2018) %>%
+# cor(joined1$battingaverage, joined1$wins) 
+joined1 <- joined %>% 
+  select(wins, battingaverage, errors, runs, strikeouts, attendance) 
+joined2 <- scale(joined1, center = TRUE, scale = TRUE) 
+
+joined %>% 
+  group_by(year) %>%
+        lm(wins ~ attendance, data = .) %>%
+        tidy(conf.int = TRUE) %>% 
+        select(term, estimate, conf.low, conf.high) %>%
+        rename(
+            "Variable" = term,
+            "Estimate" = estimate,
+            "Lower Bound" = conf.low,
+            "Upper Bound" = conf.high
+        ) %>%
+        gt()
+```
+```{r}
+          joined %>%
+            filter(ABBR == "CLE") %>%
+            ggplot(aes(x = year, y = battingaverage)) +
+            geom_point() + theme_classic()
+```
+
+```{r}
+
+```
+
+I have five data sets loaded in and have added more graphs, so I now have 31
+different graphs, one for runs, batting average, strikeouts per 9 innings as
+pitchers and errors for the years 2010-2019 (strikeouts I only have 2019). My
+next steps are to continue adding data, most importantly attendance, as well as
+some others. I also want to begin exploring data that mightn ot exist explicitly
+such as number of offseason transactions, which I would most likely have to just
+manually count. I also want to add images in place of the points on the plots
+and also see if there is a way to denote which team won the world series each
+year. I have already added lines of best fit, and hope to use the linear
+regressions to show something, too although I'm not quite sure what that is
+going to be at this point. 
+
+```{r}
+attendance <-joined %>%
+  filter (year == "2019") %>%
+  ggplot(aes(x = attendance, y = wins)) +
+  geom_image(aes(image = URL), size = 0.05) +
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "attendance", y = "wins", 
+      title = "Wins vs attendance in 2019") 
+
+attendance + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+
+```{r graph errors 2019}
+errors2019 <-joined %>%
+  filter (year == "2019") %>%
+  ggplot(aes(x = errors, y = wins, color = ABBR)) +
+  geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "errors", y = "wins", 
+      title = "Wins vs Errors in 2019") 
+
+errors2019 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph errors 2018}
+errors2018 <- joined %>%
+  filter (year == "2018") %>%
+  ggplot(aes(x = errors, y = wins, color = ABBR)) +
+  geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "errors", y = "wins", 
+      title = "Wins vs Errors in 2018") 
+
+errors2018 + geom_smooth(method = lm, se = FALSE, color = "black") 
+```
+```{r graph errors 2017}
+errors2017 <- joined %>%
+  filter (year == "2017") %>%
+  ggplot(aes(x = errors, y = wins, color = ABBR)) +
+  geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "errors", y = "wins", 
+      title = "Wins vs Errors in 2017") 
+
+errors2017 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph errors 2016}
+errors2016 <- joined %>%
+  filter (year == "2016") %>%
+  ggplot(aes(x = errors, y = wins, color = ABBR)) +
+  geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "errors", y = "wins", 
+      title = "Wins vs Errors in 2016") 
+
+errors2016 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph errors 2015}
+errors2015 <- joined %>%
+  filter (year == "2015") %>%
+  ggplot(aes(x = errors, y = wins, color = ABBR)) +
+  geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "errors", y = "wins", 
+      title = "Wins vs Errors in 2015") 
+
+errors2015 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph errors 2014}
+errors2014 <- joined %>%
+  filter (year == "2014") %>%
+  ggplot(aes(x = errors, y = wins, color = ABBR)) +
+  geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "errors", y = "wins", 
+      title = "Wins vs Errors in 2014") 
+
+errors2014 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph errors 2013}
+errors2013 <- joined %>%
+  filter (year == "2013") %>%
+  ggplot(aes(x = errors, y = wins, color = ABBR)) +
+  geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "errors", y = "wins", 
+      title = "Wins vs Errors in 2013") 
+
+errors2013 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph errors 2012}
+errors2012 <- joined %>%
+  filter (year == "2012") %>%
+  ggplot(aes(x = errors, y = wins, color = ABBR)) +
+  geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "errors", y = "wins", 
+      title = "Wins vs Errors in 2012") 
+
+errors2012 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph errors 2011}
+errors2011 <- joined %>%
+  filter (year == "2011") %>%
+  ggplot(aes(x = errors, y = wins, color = ABBR)) +
+  geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "errors", y = "wins", 
+      title = "Wins vs Errors in 2011") 
+
+errors2011 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph errors 2010}
+errors2010 <- joined %>%
+  filter (year == "2010") %>%
+  ggplot(aes(x = errors, y = wins, color = ABBR)) +
+  geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "errors", y = "wins", 
+      title = "Wins vs Errors in 2010") 
+
+errors2010 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+
+
+```{r graph batting average 2019}
+BA2019 <- joined %>%
+  filter (year == "2019") %>%
+  ggplot(aes(x = battingaverage, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "batting average", y = "wins", 
+      title = "Wins vs Batting Average in 2019") 
+
+BA2019 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph batting average 2018}
+BA2018 <- joined %>%
+  filter (year == "2018") %>%
+  ggplot(aes(x = battingaverage, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "batting average", y = "wins", 
+      title = "Wins vs Batting Average in 2018") 
+
+BA2018 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph batting average 2017}
+BA2017 <- joined %>%
+  filter (year == "2017") %>%
+  ggplot(aes(x = battingaverage, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "batting average", y = "wins", 
+      title = "Wins vs Batting Average in 2017") 
+
+BA2017 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph batting average 2016}
+BA2016 <- joined %>%
+  filter (year == "2016") %>%
+  ggplot(aes(x = battingaverage, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "batting average", y = "wins", 
+      title = "Wins vs Batting Average in 2016") 
+
+BA2016 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph batting average 2015}
+BA2015 <- joined %>%
+  filter (year == "2015") %>%
+  ggplot(aes(x = battingaverage, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "batting average", y = "wins", 
+      title = "Wins vs Batting Average in 2015") 
+
+BA2015 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph batting average 2014}
+BA2014 <- joined %>%
+  filter (year == "2014") %>%
+  ggplot(aes(x = battingaverage, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "batting average", y = "wins", 
+      title = "Wins vs Batting Average in 2014") 
+
+BA2014 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph batting average 2013}
+BA2013 <- joined %>%
+  filter (year == "2013") %>%
+  ggplot(aes(x = battingaverage, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "batting average", y = "wins", 
+      title = "Wins vs Batting Average in 2013") 
+
+BA2013 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph batting average 2012}
+BA2012 <- joined %>%
+  filter (year == "2012") %>%
+  ggplot(aes(x = battingaverage, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "batting average", y = "wins", 
+      title = "Wins vs Batting Average in 2012") 
+
+BA2012 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph batting average 2011}
+BA2011 <- joined %>%
+  filter (year == "2011") %>%
+  ggplot(aes(x = battingaverage, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "batting average", y = "wins", 
+      title = "Wins vs Batting Average in 2011") 
+
+BA2011 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph batting average 2010}
+BA2010 <- joined %>%
+  filter (year == "2010") %>%
+  ggplot(aes(x = battingaverage, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "batting average", y = "wins", 
+      title = "Wins vs Batting Average in 2010") 
+
+BA2010 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+
+
+```{r graph runs 2019}
+runs2019 <- joined %>%
+  filter (year == "2019") %>%
+  ggplot(aes(x = runs, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "runs", y = "wins", 
+      title = "Wins vs Runs in 2019") 
+
+runs2019 +   
+  geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph runs 2018}
+runs2018 <- joined %>%
+  filter (year == "2018") %>%
+  ggplot(aes(x = runs, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "runs", y = "wins", 
+      title = "Wins vs Runs in 2018") 
+
+runs2018 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph runs 2017}
+runs2017 <- joined %>%
+  filter (year == "2017") %>%
+  ggplot(aes(x = runs, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "runs", y = "wins", 
+      title = "Wins vs Runs in 2017") 
+
+runs2017 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph runs 2016}
+runs2016 <- joined %>%
+  filter (year == "2016") %>%
+  ggplot(aes(x = runs, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "runs", y = "wins", 
+      title = "Wins vs Runs in 2016") 
+
+runs2016 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph runs 2015}
+runs2015 <- joined %>%
+  filter (year == "2015") %>%
+  ggplot(aes(x = runs, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "runs", y = "wins", 
+      title = "Wins vs Runs in 2015") 
+
+runs2015 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph runs 2014}
+runs2014 <- joined %>%
+  filter (year == "2014") %>%
+  ggplot(aes(x = runs, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "runs", y = "wins", 
+      title = "Wins vs Runs in 2014") 
+
+runs2014 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph runs 2013}
+runs2013 <- joined %>%
+  filter (year == "2013") %>%
+  ggplot(aes(x = runs, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "runs", y = "wins", 
+      title = "Wins vs Runs in 2013") 
+
+runs2013 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph runs 2012}
+runs2012 <- joined %>%
+  filter (year == "2012") %>%
+  ggplot(aes(x = runs, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "runs", y = "wins", 
+      title = "Wins vs Runs in 2012") 
+
+runs2012 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph runs 2011}
+runs2011 <- joined %>%
+  filter (year == "2011") %>%
+  ggplot(aes(x = runs, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "runs", y = "wins", 
+      title = "Wins vs Runs in 2011") 
+
+runs2011 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+```{r graph runs 2010}
+runs2010 <- joined %>%
+  filter (year == "2010") %>%
+  ggplot(aes(x = runs, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "runs", y = "wins", 
+      title = "Wins vs Runs in 2010") 
+
+runs2010 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+
+```{r graph strikeoutsper9 2019}
+strikeoutsper9_2019 <- joined %>%
+  filter (year == "2019") %>%
+  ggplot(aes(x = runs, y = wins, color = ABBR)) +
+    geom_point() + 
+  geom_text_repel(aes(label=ABBR), size = 3) +
+  labs(x = "runs", y = "wins", 
+      title = "Wins vs Strikeouts Against hitters in 2019") 
+
+strikeoutsper9_2019 + geom_smooth(method =lm, se = FALSE, color = "black") 
+```
+
+```{r, include=FALSE}
+  rankings <- read_html("https://www.teamrankings.com/mlb/stat/errors-per-game")
+  html_text(rankings)
+  tab <- rankings %>% html_nodes("table")
+  tab <- tab[[1]] %>% html_table %>%
+    select(2, 3, 8)
+```
